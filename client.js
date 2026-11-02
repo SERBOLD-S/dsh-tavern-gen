@@ -29,6 +29,8 @@ window.__ModuleLoader__.load({
 
     const h = React.createElement
     const { useEffect, useState } = React
+    // Tavern 浏览器接口：只用来查会话标题（getGames）。没注入成功就是 null，画廊退回短码。
+    let pluginCtx = null
     const API = '/dsh-tavern-gen/api'
     const clone = value => JSON.parse(JSON.stringify(value))
 
@@ -113,6 +115,45 @@ window.__ModuleLoader__.load({
       type: 'button', onClick: props.onClick, disabled: props.disabled,
       style: { ...S.danger, ...(props.disabled ? S.off : {}), ...(props.style || {}) },
     }, props.children)
+
+    // 哪一页渲染炸了只废这一页。没有这层的话，任意一处运行时错误会让整块设置面板被 React
+    // 卸载，表现就是右侧一片白、左侧菜单还在。
+    class PageBoundary extends React.Component {
+      constructor(props) {
+        super(props)
+        this.state = { error: null }
+      }
+      static getDerivedStateFromError(error) { return { error } }
+      componentDidCatch(error) {
+        try { console.warn('[dsh-tavern-gen] 页面渲染失败:', error?.message ?? error) } catch {}
+      }
+      render() {
+        if (this.state.error) {
+          return h('div', { style: S.card },
+            h('div', { style: { fontSize: 13, fontWeight: 600 } }, '这一页渲染失败了'),
+            h('div', { style: S.hint }, String(this.state.error?.message ?? this.state.error)),
+            h(Ghost, { onClick: () => this.setState({ error: null }) }, '重试'))
+        }
+        return this.props.children
+      }
+    }
+
+    // 开关。原生 checkbox 各主题下样子不一，这里用 button + role=switch 自己画。
+    const Toggle = props => h('button', {
+      type: 'button', role: 'switch', 'aria-checked': props.value ? 'true' : 'false',
+      disabled: props.disabled, onClick: () => props.onChange?.(!props.value),
+      style: {
+        flex: '0 0 auto', width: 44, height: 24, padding: 0, borderRadius: 999, position: 'relative',
+        border: '1px solid rgba(128,128,128,.35)', cursor: props.disabled ? 'default' : 'pointer',
+        background: props.value ? 'rgba(120,160,255,.78)' : 'rgba(128,128,128,.28)',
+        opacity: props.disabled ? 0.6 : 1, transition: 'background .15s',
+      },
+    }, h('span', {
+      style: {
+        position: 'absolute', top: 2, left: props.value ? 22 : 2, width: 18, height: 18,
+        borderRadius: '50%', background: '#fff', transition: 'left .15s', display: 'block',
+      },
+    }))
 
     const Field = props => h('label', { style: { ...S.label, ...(props.style || {}) } },
       h('span', null, props.label),
@@ -237,12 +278,46 @@ window.__ModuleLoader__.load({
       const [importText, setImportText] = useState('')
       const [importName, setImportName] = useState('')
       const [wfBusy, setWfBusy] = useState(false)
+      // 工具开关：点一下单独存一次，不等页面底部的「保存」。
+      const [switching, setSwitching] = useState(false)
+      const [switchStatus, setSwitchStatus] = useState('')
 
       const switchBackend = value => patch(next => {
         if (value === 'comfyui') { next.config.imageBackend = 'comfyui'; return }
         const active = (next.config.imageChannels ?? []).find(item => item.id === next.config.activeImageChannel)
         next.config.imageBackend = active?.provider || next.config.imageChannels?.[0]?.provider || 'novelai'
       })
+
+      // 开关自己发一次保存请求：它得点完就生效，不能逼用户再点底部那个按钮。
+      // 提交的是内存里整份配置，所以表单上还没保存的改动会跟着一起写盘。
+      const setEnabled = async next => {
+        setSwitching(true)
+        setSwitchStatus('')
+        try {
+          const config = clone(data.config ?? {})
+          config.enabled = next
+          if (Array.isArray(config.imageChannels)) {
+            for (const item of config.imageChannels) {
+              if (!item) continue
+              delete item.hasApiKey
+              delete item.hasPassword
+            }
+          }
+          const response = await fetch(API + '/save', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ target: 'config', content: config }),
+          })
+          const value = await response.json()
+          if (!response.ok || !value.ok) throw new Error(value?.error || 'HTTP ' + response.status)
+          patch(state => { state.config.enabled = next })
+          setSwitchStatus(next ? '已启用，Agent 现在能调用这些工具' : '已关闭，工具已经从卡片工作台撤下')
+        } catch (error) {
+          setSwitchStatus('没改成：' + (error?.message ?? error))
+        } finally {
+          setSwitching(false)
+        }
+      }
 
       const pullComfy = async () => {
         setComfyBusy(true)
@@ -476,6 +551,14 @@ window.__ModuleLoader__.load({
       })
 
       return h('div', { style: S.group },
+        h('div', { style: { ...S.card, flexDirection: 'row', alignItems: 'center', gap: 12 } },
+          h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 } },
+            h('div', { style: { fontSize: 13, fontWeight: 600 } }, '启用工具'),
+            h('div', { style: { fontSize: 12, opacity: 0.7, lineHeight: 1.6 } },
+              '关掉后卡片工作台的 Agent 看不到本插件的工具：不能出图，也查不到人物库、服装库和画风配置。已经生成的图和画廊记录不受影响，随时能再打开。')),
+          h(Toggle, { value: config.enabled !== false, disabled: switching, onChange: next => setEnabled(next) }),
+        ),
+        switchStatus ? h('div', { style: S.status }, switchStatus) : null,
         h('div', { style: S.row },
           h(Field, { label: '生图后端' },
             h(Pick, {
@@ -870,11 +953,57 @@ window.__ModuleLoader__.load({
     }
 
     // ── 画廊 ──────────────────────────────────────────────────────────
+    // 本局画廊整块由 Tavern 前端画（scene-images.js），插件只能递数据，排版和来源名都改不了：
+    // 图片行是 flex + overflow-x 横向滚动，来源名是 `"扩展图库 · " + 插件名` 拼死的。
+    // 这两条是浏览器侧补丁——行改成换行网格，来源名显示成「本局生图」。都按幂等写。
+    const GALLERY_STYLE_ID = 'dsh-tavern-gen-gallery-style'
+    const GALLERY_PROVIDER_LABEL = '本局生图'
+    function installGalleryTweaks() {
+      if (typeof document === 'undefined') return
+      if (!document.getElementById(GALLERY_STYLE_ID)) {
+        const style = document.createElement('style')
+        style.id = GALLERY_STYLE_ID
+        style.textContent = [
+          '.dsh-tavern-gallery-row{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(130px,1fr))!important;overflow-x:visible!important;}',
+          '.dsh-tavern-gallery-shot{width:100%!important;flex:none!important;}',
+          '.dsh-tavern-gallery-shot a{width:100%!important;}',
+          '.dsh-tavern-gallery-shot img{width:100%!important;height:auto!important;max-width:none!important;}',
+        ].join('')
+        ;(document.head || document.documentElement).appendChild(style)
+      }
+      const root = document.documentElement
+      if (!root) return
+      // 只认自己那一行：宿主渲染的 h4 首个子节点就是这段文字。
+      const from = '扩展图库 · dsh-tavern-gen'
+      const rename = node => {
+        const first = node.firstChild
+        if (!first || first.nodeType !== 3) return
+        const text = String(first.nodeValue || '')
+        if (!text.startsWith(from)) return
+        first.nodeValue = GALLERY_PROVIDER_LABEL + text.slice(from.length)
+      }
+      const scan = root => {
+        if (!root || root.nodeType !== 1) return
+        if (typeof root.matches === 'function' && root.matches('.dsh-tavern-gallery-turn h4')) rename(root)
+        if (typeof root.querySelectorAll !== 'function') return
+        for (const node of root.querySelectorAll('.dsh-tavern-gallery-turn h4')) rename(node)
+      }
+      scan(root)
+      if (typeof MutationObserver !== 'function') return
+      // 只看新增节点，不整棵树重扫；宿主重渲染会再挂一次，改名是幂等的。
+      const observer = new MutationObserver(records => {
+        for (const record of records) for (const node of record.addedNodes) scan(node)
+      })
+      observer.observe(root, { childList: true, subtree: true })
+    }
+
     function GalleryPage() {
       const [items, setItems] = useState(null)
       const [zoom, setZoom] = useState(null)
       const [status, setStatus] = useState('')
       const [busy, setBusy] = useState(false)
+      const [titles, setTitles] = useState({})
+      const [closed, setClosed] = useState({})
 
       async function pull() {
         setBusy(true)
@@ -892,6 +1021,20 @@ window.__ModuleLoader__.load({
       }
 
       useEffect(() => { pull() }, [])
+
+      // 会话标题：tavernUi.getGames 返回「会话 id → 标题」，和 Tavern 会话列表上显示的一致。
+      // 拿不到就退回会话 id 前 8 位，不影响分组和展开。
+      // ctx.get 取没声明依赖的服务会当场抛，必须自己接住：effect 里抛出去会把整个设置面板卸成白屏。
+      useEffect(() => {
+        let ui = null
+        try { ui = pluginCtx?.get?.('tavernUi') ?? null } catch { ui = null }
+        if (!items || !ui || typeof ui.getGames !== 'function') return undefined
+        const ids = [...new Set(items.map(item => String(item.session || '')).filter(Boolean))]
+        if (!ids.length) return undefined
+        let alive = true
+        Promise.resolve(ui.getGames(ids)).then(map => { if (alive) setTitles(map || {}) }, () => {})
+        return () => { alive = false }
+      }, [items])
 
       async function remove(id) {
         try {
@@ -954,6 +1097,59 @@ window.__ModuleLoader__.load({
       }
 
       const list = items ?? []
+      // 按出图会话分组：组名用会话标题，没有就退回会话 id 前 8 位。
+      const groupKeys = []
+      const bySession = new Map()
+      for (const item of list) {
+        const key = String(item.session || '')
+        if (!bySession.has(key)) { bySession.set(key, []); groupKeys.push(key) }
+        bySession.get(key).push(item)
+      }
+      // getGames 给的不是裸字符串：每条是会话对象，标题在 .title 里（还带 cardName 之类）。
+      // 原样塞进 children 就是 React #31，所以这里一律取成字符串再显示。
+      // 卡片工作台的会话没有自己的标题，宿主会回落到卡片名，几个会话就都叫同一个名字；
+      // 后面补上这一组最新一张图的时间，至少能分清是哪一次。
+      const pad = value => String(value).padStart(2, '0')
+      const groupTitle = (key, group) => {
+        let head = '未分类'
+        if (key) {
+          const raw = titles[key]
+          const text = typeof raw === 'string' ? raw : String(raw?.title || raw?.cardName || raw?.name || '')
+          head = text || '会话 ' + key.replace(/^session-/, '').slice(0, 8)
+        }
+        const stamps = group.map(item => Number(item.at) || 0).filter(Boolean)
+        if (!stamps.length) return head
+        const latest = new Date(Math.max(...stamps))
+        return head + ' · ' + pad(latest.getMonth() + 1) + '-' + pad(latest.getDate()) + ' ' + pad(latest.getHours()) + ':' + pad(latest.getMinutes())
+      }
+      const toggle = key => setClosed(current => ({ ...current, [key]: !current[key] }))
+
+      const tile = item => h('div', { key: item.id, style: { ...S.card, padding: 6, gap: 5 } },
+        h('img', {
+          src: item.url, alt: item.prompt || item.file, loading: 'lazy', decoding: 'async',
+          onClick: () => setZoom(item),
+          style: { width: '100%', borderRadius: 6, cursor: 'zoom-in', display: 'block', background: 'rgba(0,0,0,.15)' },
+        }),
+        h('div', { style: { fontSize: 11, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+          item.preset || '默认画风'),
+        h('div', { style: { fontSize: 10, opacity: 0.55 } },
+          new Date(item.at || Date.now()).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })),
+        // 三个按钮一行：两个复制平分宽度，删除窄且红，避免误点。
+        h('div', { style: { display: 'flex', gap: 4, alignItems: 'stretch' } },
+          h(Ghost, {
+            onClick: () => copyText(item.prompt, 'prompt'), title: '复制这一张的完整 prompt',
+            style: { flex: '1 1 0', minWidth: 0, padding: '3px 3px', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis' },
+          }, '提示词'),
+          h(Ghost, {
+            onClick: () => copyText(item.negative, 'negative'), title: '复制这一张的 negative',
+            style: { flex: '1 1 0', minWidth: 0, padding: '3px 3px', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis' },
+          }, '负面'),
+          h(Danger, {
+            onClick: () => remove(item.id), title: '删除记录和图片文件',
+            style: { flex: '0 0 auto', padding: '3px 7px', fontSize: 10 },
+          }, '×'),
+        ),
+      )
 
       return h('div', { style: S.group },
         h('div', { style: S.row },
@@ -962,39 +1158,36 @@ window.__ModuleLoader__.load({
           list.length ? h(Danger, { onClick: clearAll, disabled: busy }, '清空全部') : null,
           status ? h('span', { style: S.status }, status) : null,
         ),
-        h('div', { style: S.hint }, '每次 gen_image 出的图都会记在这里。点开放大。删除会同时删掉记录和图片文件，删了找不回来。'),
+        h('div', { style: S.hint }, '按出图会话分组，点组标题收起或展开。删除会同时删掉记录和图片文件，删了找不回来。'),
         items === null
           ? h('div', { style: S.hint }, '正在读取…')
           : list.length === 0
             ? h('div', { style: S.hint }, '还没有图。让 Agent 出一张就会出现在这里。')
-            : h('div', {
-              style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(196px, 1fr))', gap: 10 },
-            }, list.map(item => h('div', { key: item.id, style: { ...S.card, padding: 6, gap: 6 } },
-              h('img', {
-                src: item.url, alt: item.prompt || item.file, loading: 'lazy', decoding: 'async',
-                onClick: () => setZoom(item),
-                style: { width: '100%', borderRadius: 6, cursor: 'zoom-in', display: 'block', background: 'rgba(0,0,0,.15)' },
+            : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+              groupKeys.map(key => {
+                const group = bySession.get(key) || []
+                const open = !closed[key]
+                return h('div', { key: key || 'none', style: { ...S.card, padding: 8, gap: 8 } },
+                  h('button', {
+                    type: 'button',
+                    onClick: () => toggle(key),
+                    title: open ? '收起这一组' : '展开这一组',
+                    style: {
+                      display: 'flex', alignItems: 'center', gap: 8, width: '100%', cursor: 'pointer',
+                      background: 'transparent', border: 'none', padding: '2px 0', color: 'inherit', textAlign: 'left',
+                    },
+                  },
+                    h('span', { style: { fontSize: 11, opacity: 0.6, width: 12 } }, open ? '▾' : '▸'),
+                    h('span', { style: { fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, groupTitle(key, group)),
+                    h('span', { style: { fontSize: 11, opacity: 0.55, flex: '0 0 auto' } }, `${group.length} 张`),
+                  ),
+                  // 展开后自动铺列：宽屏 5 列，窄了自己降。
+                  open ? h('div', {
+                    style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 },
+                  }, group.map(tile)) : null,
+                )
               }),
-              h('div', { style: { fontSize: 11, opacity: 0.7, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
-                item.preset || '默认画风'),
-              h('div', { style: { fontSize: 11, opacity: 0.55 } },
-                new Date(item.at || Date.now()).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })),
-              // 三个按钮一行：两个复制平分宽度，删除窄且红，避免误点。
-              h('div', { style: { display: 'flex', gap: 5, alignItems: 'stretch' } },
-                h(Ghost, {
-                  onClick: () => copyText(item.prompt, 'prompt'), title: '复制这一张的完整 prompt',
-                  style: { flex: '1 1 0', minWidth: 0, padding: '4px 4px', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis' },
-                }, '提示词'),
-                h(Ghost, {
-                  onClick: () => copyText(item.negative, 'negative'), title: '复制这一张的 negative',
-                  style: { flex: '1 1 0', minWidth: 0, padding: '4px 4px', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis' },
-                }, '负面'),
-                h(Danger, {
-                  onClick: () => remove(item.id), title: '删除记录和图片文件',
-                  style: { flex: '0 0 auto', padding: '4px 9px', fontSize: 11 },
-                }, '×'),
-              ),
-            ))),
+            ),
         zoom ? h('div', {
           onClick: () => setZoom(null),
           style: {
@@ -1115,7 +1308,7 @@ window.__ModuleLoader__.load({
           onClick: () => { setPage(item.id); setStatus(''); setFailed(false) },
           style: { ...S.pill, ...(item.id === page ? S.pillOn : {}) },
         }, item.label))),
-        body,
+        h(PageBoundary, { key: page }, body),
         page === 'gallery' ? null : h('div', { style: S.foot },
           h(Btn, { onClick: save, disabled: busy || !data }, busy ? '处理中…' : '保存'),
           h(Ghost, { onClick: pull, disabled: busy }, '重新读取'),
@@ -1125,6 +1318,16 @@ window.__ModuleLoader__.load({
     }
 
     exports.apply = (ctx) => {
+      // 会话标题要 Tavern 浏览器侧的 tavernUi.getGames。
+      // 这里只留住 ctx，不在 apply 里 ctx.inject：inject 会为缺失的服务挂一个永久 pending 的 fiber，
+      // 旧版 Tavern 没有 tavernUi 时整个设置页跟着不激活（现象就是「卡片生图」点不开）。
+      // 改成画廊渲染时用 ctx.get 惰性取，取不到只是标题退回会话短码。
+      pluginCtx = ctx
+      // 本局画廊的排版与来源名要从浏览器侧补，见 installGalleryTweaks 的注释。
+      // 补丁失败不影响设置页，吞掉就行。
+      try { installGalleryTweaks() } catch (error) {
+        try { console.warn('[dsh-tavern-gen] 本局画廊补丁未生效:', error?.message ?? error) } catch {}
+      }
       try {
         ctx.slots?.inject?.('settings.section', () => ctx.slots.register({
           name: 'settings.section',
@@ -1139,6 +1342,8 @@ window.__ModuleLoader__.load({
 
     // Cordis 注入的是「服务名」，不是包名：slots 由 @deepseek-ai/dsh-client-ui-slots 提供。
     // 写成包名会永远 pending，web boot 直接判定插件未激活，整页卡在启动画面。
+    // tavernUi 不能写进这里：旧版 Tavern 没有这个服务时静态 inject 会一直 pending，
+    // 整个设置页跟着不激活。它走 apply 里的动态 ctx.inject，拿不到就只影响会话标题。
     exports.inject = ['slots']
     return module.exports
   },
