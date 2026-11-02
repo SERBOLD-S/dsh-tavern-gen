@@ -116,6 +116,10 @@ window.__ModuleLoader__.load({
 
     const Field = props => h('label', { style: { ...S.label, ...(props.style || {}) } },
       h('span', null, props.label),
+      // 字段说明单独一行小字：字段名说人话，说明写清楚该往框里填什么。
+      props.hint ? h('span', {
+        style: { display: 'block', fontSize: 11, fontWeight: 400, opacity: 0.55, marginBottom: 2, lineHeight: 1.4 },
+      }, props.hint) : null,
       props.children,
     )
 
@@ -702,18 +706,35 @@ window.__ModuleLoader__.load({
     }
 
     // ── 人物库 ────────────────────────────────────────────────────────
+    // 字段名对齐 dsh-tavern-image：SFW 是穿衣服能看见的，NSFW 是脱了才看见的，别用「常规 / 细节」这种绕弯说法。
     const TRAIT_LABEL = {
-      face: '正面头面部', faceBack: '背面头面部',
-      bodySFW: '身体 · 常规', bodySFWBack: '身体背面 · 常规',
-      lowerSFW: '下半身 · 常规', lowerSFWBack: '下半身背面 · 常规',
-      bodyNSFW: '身体 · 细节', bodyNSFWBack: '身体背面 · 细节',
-      lowerNSFW: '下半身 · 细节', lowerNSFWBack: '下半身背面 · 细节',
-      feature: '气质描述（出图不用）', negative: '专属负面词',
+      face: '五官外貌', faceBack: '五官外貌背面',
+      bodySFW: '上半身SFW', bodySFWBack: '上半身SFW背面',
+      lowerSFW: '下半身SFW', lowerSFWBack: '下半身SFW背面',
+      bodyNSFW: '上半身NSFW', bodyNSFWBack: '上半身NSFW背面',
+      lowerNSFW: '下半身NSFW', lowerNSFWBack: '下半身NSFW背面',
+      feature: '性格气质', negative: '专属负面词',
+    }
+
+    const TRAIT_HINT = {
+      face: '【正面】发型、发色、瞳色、脸型、肤色、年龄段 —— 不写表情',
+      faceBack: '【背面】发型背面、后脑勺、脖子后面、耳背 —— 不能写眼睛鼻子嘴巴',
+      bodySFW: '穿衣可见的上半身正面：体型、胸部轮廓、肩宽 —— 写裸露词会让衣服穿不上',
+      bodySFWBack: '穿衣可见的背面：肩膀轮廓、腰部线条 —— 不写胸部',
+      lowerSFW: '穿衣可见的下半身正面：腿型 —— 写裸露词会让衣服穿不上',
+      lowerSFWBack: '臀部轮廓、腿部背面',
+      bodyNSFW: '赤裸才可见：胸部大小形状、乳头、正面纹身伤疤',
+      bodyNSFWBack: 'bare back、背部线条、肩胛骨 —— 不写胸和乳头',
+      lowerNSFW: '赤裸才可见：生殖器官、正面纹身痣',
+      lowerNSFWBack: '臀部详细、肛门 —— 不写正面生殖器',
+      feature: '性格与气质（proud / gentle / tsundere），只给模型挑表情动作用，不写进画图提示词',
+      negative: '这个角色身上不该出现的东西，只写外来的异物（眼镜、胡子、纹身、首饰）—— 不要写年龄和体型',
     }
 
     const TRAIT_GROUPS = [
-      { title: '常规外观', open: true, keys: ['face', 'faceBack', 'bodySFW', 'bodySFWBack', 'lowerSFW', 'lowerSFWBack'] },
-      { title: '细节外观', open: false, keys: ['bodyNSFW', 'bodyNSFWBack', 'lowerNSFW', 'lowerNSFWBack'] },
+      { title: '五官', open: true, keys: ['face', 'faceBack'] },
+      { title: '穿衣身体块（上半身 / 下半身，正背面）', open: true, keys: ['bodySFW', 'bodySFWBack', 'lowerSFW', 'lowerSFWBack'] },
+      { title: '裸体身体块（只在 NSFW 画面用）', open: false, keys: ['bodyNSFW', 'bodyNSFWBack', 'lowerNSFW', 'lowerNSFWBack'] },
       { title: '其他', open: false, keys: ['feature', 'negative'] },
     ]
 
@@ -768,10 +789,11 @@ window.__ModuleLoader__.load({
             },
               h('summary', {
                 style: { cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: 0.85 },
-              }, `${group.title}（${group.keys.length}）`),
+              }, group.title),
               h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 8 } },
                 group.keys.map(key => h(Field, {
-                  key, label: TRAIT_LABEL[key] || key, style: { flex: '0 0 auto' },
+                  key, label: TRAIT_LABEL[key] || key, hint: TRAIT_HINT[key] || '',
+                  style: { flex: '0 0 auto' },
                 }, Area({
                   value: item.traits?.[key] ?? '',
                   rows: String(item.traits?.[key] ?? '').length > 120 ? 4 : 2,
