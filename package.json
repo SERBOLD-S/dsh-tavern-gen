@@ -1,0 +1,60 @@
+{
+  "name": "dsh-tavern-gen",
+  "version": "0.1.0",
+  "description": "DSH Tavern 卡片工作台的生图插件：Agent 按世界书规则写提示词，用户确认后调用生图渠道，图片以链接回到对话。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "client.js",
+    "cordis.patch.yml",
+    "config.json",
+    "definitions.json",
+    "worldbook.json",
+    "outfits.json",
+    "workflows/.gitkeep",
+    "skills",
+    "README.md",
+    "NOTICE.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    },
+    "compatibility": {
+      "dsh": ">=0.1.0-rc.8 <0.3.0",
+      "tavernApiVersion": 1
+    }
+  },
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-tavern",
+    "text-to-image",
+    "novelai",
+    "comfyui",
+    "tavern",
+    "plugin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XuanFunni/dsh-tavern-gen.git"
+  },
+  "homepage": "https://github.com/XuanFunni/dsh-tavern-gen#readme",
+  "bugs": {
+    "url": "https://github.com/XuanFunni/dsh-tavern-gen/issues"
+  }
+}
