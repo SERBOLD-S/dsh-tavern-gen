@@ -949,7 +949,7 @@ window.__ModuleLoader__.load({
               style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(196px, 1fr))', gap: 10 },
             }, list.map(item => h('div', { key: item.id, style: { ...S.card, padding: 6, gap: 6 } },
               h('img', {
-                src: item.url, alt: item.prompt || item.file, loading: 'lazy',
+                src: item.url, alt: item.prompt || item.file, loading: 'lazy', decoding: 'async',
                 onClick: () => setZoom(item),
                 style: { width: '100%', borderRadius: 6, cursor: 'zoom-in', display: 'block', background: 'rgba(0,0,0,.15)' },
               }),
