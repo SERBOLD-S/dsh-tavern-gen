@@ -1,39 +1,47 @@
 ---
 name: image-prompt
-description: "调用 gen_image 之前必读。按读取时机分册：规则、示例、改库。任何题材先读规则分册里的基础几条，不读别写。"
+description: "调用 gen_image 之前必读。规则在 references/ 下的 md，用 tavern_read_skill_reference 读：always 档任何题材都读全，nsfw 加读性场景，gore 加读猎奇。不读别写。"
 ---
 
 # 文生图提示词写法
 
 ## 硬性要求
 
-写任何 prompt 之前，**先把 `references/rules/` 里标为必读的读完，不读不许写**：
+写任何 prompt 之前，**先读 `references/INDEX.md`**——它列出当前每个参考文件的档位、路径和标题，由插件在世界书保存时自动生成，永远和磁盘一致。不用列目录，也别猜文件名。
 
-- `references/rules/01-workflow.md` —— 任务、结构与权重（什么时候该写、长句怎么拼、加权和负面怎么用）
-- `references/rules/02-appearance.md` —— 人物、多人、形态（十二块怎么挑、多个人怎么区分）
-- `references/rules/03-frame.md` —— 画面边界与着装档位（哪些不能写、怎么让它进镜头、穿着/半脱/全露怎么判）
+拿到映射后按档位取文件，用 `tavern_read_skill_reference` 读（skill 名 `image-prompt`，path 填索引里的路径）。**不要用 `tavern_read_worldbook`**——那是读人物卡世界书的，本插件规则不在那儿，它回「尚未引用世界书」不代表没有规则可读。
 
-按题材取，日常图只读必读那几份。跳过它们直接写，会稳定犯这几类错：
+- **always** —— 写之前全部读完，同档多条一起读。
+- **nsfw** —— 画性场景加读，同档多条一起读。
+- **gore** —— 画死亡、肢解、酷刑、内脏、排泄加读。
+- **prescan** / **manual** / **lookup** —— 见索引表头的时机说明。
+
+按题材取，日常图只读 always。跳过它们直接写，会稳定犯这几类错：
 
 - 把画不出来的东西写进去（心理、回忆、气味、比喻、还没发生的事）
 - 把镜头拍不到的部位写进去（背影写瞳色，特写写腿）
 - 漏掉缺了就变味的词（年龄、体型、朝向、动作词）
 
-## 分册地图
+## 档位一览
 
-| 目录 | 内容 | 怎么读 |
+分册决定「装什么」，档位决定「什么时候读」。当前有哪些文件、各是什么档，看 `references/INDEX.md`。
+
+| 档位 | 落在哪个分册 | 什么时候读 |
 |---|---|---|
-| `references/rules/` | 规则 | 按题材读 |
-| `references/examples/` | 示例 | 提交前扫一遍 |
-| `references/authoring/` | 改库 | 改世界书、人物库、服装库之前读 |
+| always | `rules/` | 写之前，全部读完 |
+| nsfw | `rules/` | 画性场景加读 |
+| gore | `rules/` | 画死亡、肢解、酷刑、内脏、排泄加读 |
+| prescan | `examples/` | 提交前扫一遍 |
+| manual | `authoring/` | 改世界书、人物库、服装库之前读 |
+| lookup | `library/` | 用 `find_prompt` 按词查，不读文件 |
 
-改库分册里，「改库一律走接口」讲的是必须走 `POST /dsh-tavern-gen/api/save`。直写磁盘的库文件会被下一次保存覆盖成空。
+manual 档里，「改库一律走接口」讲的是必须走 `POST /dsh-tavern-gen/api/save`。直写磁盘的库文件会被下一次保存覆盖成空。
 
 ## 常用词在哪
 
-不收总词表。`rules/` 里带了容易写错的那批：镜头与景别、接触对象该归谁、身体反应怎么落到词上。其余姿势、服装、光线、地点、表情，直接按英文写，模型都认识。
+想查现成组合就调 `find_prompt`：素材表里按玩法分好类，中文名加整串英文 tag。查到后按自己的画面挑着改写，不要整串照抄。
 
-想查现成组合就调 `find_prompt`：素材表由用户自己导入，表里每条是一个中文名加一整串验证过的 tag。查到后按自己的画面挑着改写，不要整串照抄。
+不收总词表。规则档里已经带了容易写错的那批：镜头与景别、接触对象该归谁、身体反应怎么落到词上。其余姿势、服装、光线、地点、表情，直接按英文写，模型都认识。
 
 ## 拼串的固定顺序
 
@@ -61,6 +69,6 @@ description: "调用 gen_image 之前必读。按读取时机分册：规则、�
 
 ## 人物库怎么参与
 
-调 `read_character` 拿这个角色的十二块 traits，按镜头和衣着状态挑对应的几块拼进去。挑法见 `references/rules/02-appearance.md`。
+调 `read_character` 拿这个角色的十二块 traits，按镜头和衣着状态挑对应的几块拼进去。挑法见 `references/rules/` 里讲形态与镜头那几份。
 
 不要全塞，也不要凭记忆写。

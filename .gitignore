@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 *.log
 .tavern-status.json
 .tavern-restart.json
@@ -6,3 +6,4 @@ workflows/*.json
 !workflows/.gitkeep
 .DS_Store
 Thumbs.db
+*.bak
