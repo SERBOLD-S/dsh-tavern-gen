@@ -13,7 +13,8 @@
 | `traits` | 外观分块，十二块，见下 |
 | `outfits` | 这个角色自带的服装，可空 |
 | `continuity` | 跨轮一致性要求，比如发色不能变 |
-| `outfitRefs` | 引用公共服装库里的套装名 |
+| `outfitRefs` | 另外引用公共服装库的套装，存 id 或名字 |
+| `defaultOutfit` | 默认服装，存公共服装库那套的 id；空着就退回 `outfits` 里标了 `default` 的那套 |
 
 ## traits 十二块
 
@@ -33,6 +34,8 @@
 | `lowerNSFW` | 裸露的下半身 |
 | `lowerNSFWBack` | 同上，背面 |
 | `negative` | 这个角色不该出现的元素 |
+
+默认服装只决定 `read_character` 返回的「默认服装」是哪一套，不自动拼进提示词——这一张穿什么仍由画面决定。
 
 ## 三条硬规矩
 

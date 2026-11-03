@@ -821,9 +821,56 @@ window.__ModuleLoader__.load({
       { title: '其他', open: false, keys: ['feature', 'negative'] },
     ]
 
+    // 服装七块，人物库的自带默认衣物编辑框和服装库页共用同一份字段表。
+    const OUTFIT_FIELDS = [
+      ['upper', '上身'],
+      ['lower', '下身'],
+      ['shoes', '鞋'],
+      ['accessory', '配饰'],
+      ['full', '整套兜底'],
+      ['back', '背影补充'],
+      ['negative', '负面'],
+    ]
+
     function CharacterPage({ data, patch }) {
       const [open, setOpen] = useState('')
       const list = Array.isArray(data.characters?.characters) ? data.characters.characters : []
+      // 默认服装的下拉选项来自公共服装库（outfits.json），不是角色自带那几套。
+      const library = (Array.isArray(data.outfits?.outfits) ? data.outfits.outfits : [])
+        .filter(item => item && item.enabled !== false && item.id)
+        .map(item => ({ value: String(item.id), label: item.name || item.id }))
+      // 存的是 id；那套被删掉之后当前值不在选项里，补一条占位，别让下拉框空着。
+      // 「不指定」不等于没衣服：read_character 会回退到下面那个自带默认衣物框，
+      // 所以把回退目标直接写进选项文字，界面上就能看出默认服装到底来自哪。
+      const outfitOptions = (current, ownDefault) => {
+        const key = String(current ?? '')
+        const empty = ownDefault ? `使用默认衣物 ·「${ownDefault}」` : '使用默认衣物 ·（未填）'
+        const options = [{ value: '', label: empty }, ...library]
+        if (key && !options.some(item => item.value === key)) options.push({ value: key, label: '（公共库里已经没有这套，请重选）' })
+        return options
+      }
+      // 角色自带的那件默认衣物：outfits 里 default: true 且启用的那一条。
+      const ownOutfit = item => {
+        const hit = (Array.isArray(item?.outfits) ? item.outfits : [])
+          .find(entry => entry && entry.default === true && entry.enabled !== false)
+        return hit || null
+      }
+      // 编辑自带默认衣物；角色还没有这件时就地建一条，之后照常写七块。
+      const editOwn = (index, key, value) => patch(next => {
+        const target = next.characters.characters[index]
+        if (!target) return
+        if (!Array.isArray(target.outfits)) target.outfits = []
+        let at = target.outfits.findIndex(entry => entry && entry.default === true && entry.enabled !== false)
+        if (at < 0) {
+          at = target.outfits.length
+          target.outfits.push({
+            id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+            name: '默认衣物', enabled: true, default: true,
+            upper: '', lower: '', shoes: '', accessory: '', full: '', back: '', negative: '',
+          })
+        }
+        target.outfits[at][key] = value
+      })
 
       const edit = (index, key, value) => patch(next => {
         const target = next.characters.characters[index]
@@ -866,6 +913,15 @@ window.__ModuleLoader__.load({
             h(Field, { label: '角色说明（给规划模型看的，可留空）', style: { flex: '0 0 auto' } }, Input({
               value: item.note ?? '', onChange: value => edit(index, 'note', value),
             })),
+            h(Field, {
+              label: '默认服装（公共服装库）',
+              hint: '选了用公共库这套；不选就用下面的自带默认衣物。都不会自动拼进提示词。',
+              style: { flex: '0 0 auto' },
+            }, h(Pick, {
+              value: item.defaultOutfit ?? '',
+              options: outfitOptions(item.defaultOutfit, ownOutfit(item)?.name || ''),
+              onChange: value => edit(index, 'defaultOutfit', value),
+            })),
             TRAIT_GROUPS.map(group => h('details', {
               key: group.title, open: group.open,
               style: { borderTop: '1px solid rgba(128,128,128,.2)', paddingTop: 8 },
@@ -884,22 +940,32 @@ window.__ModuleLoader__.load({
                 }))),
               ),
             )),
+            // 自带默认衣物放在 traits 之后，默认收起：它平时改得少，展开只为看/改 tag。
+            h('details', { style: { borderTop: '1px solid rgba(128,128,128,.2)', paddingTop: 8 } },
+              h('summary', { style: { cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: 0.85 } },
+                '自带默认衣物' + (ownOutfit(item)?.name ? `（${ownOutfit(item).name}）` : '（未填）')),
+              h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 8 } },
+                h('div', { style: S.hint }, '上面不选公共库时，默认服装就用这里。全英文 tag。'),
+                h(Field, { label: '名字', style: { flex: '0 0 auto' } }, Input({
+                  value: ownOutfit(item)?.name ?? '', placeholder: '例如：常服、私密居家',
+                  onChange: value => editOwn(index, 'name', value),
+                })),
+                OUTFIT_FIELDS.map(([key, label]) => h(Field, {
+                  key, label: key === 'negative' ? '负面（不写进 prompt，走 negative 参数）' : label,
+                  style: { flex: '0 0 auto' },
+                }, Area({
+                  value: ownOutfit(item)?.[key] ?? '',
+                  rows: ['upper', 'lower', 'full', 'negative'].includes(key) ? 2 : 1,
+                  onChange: value => editOwn(index, key, value),
+                }))),
+              ),
+            ),
           ) : null,
         )),
       )
     }
 
     // ── 服装库 ────────────────────────────────────────────────────────
-    const OUTFIT_FIELDS = [
-      ['upper', '上身'],
-      ['lower', '下身'],
-      ['shoes', '鞋'],
-      ['accessory', '配饰'],
-      ['full', '整套兜底'],
-      ['back', '背影补充'],
-      ['negative', '负面'],
-    ]
-
     function OutfitPage({ data, patch }) {
       const [open, setOpen] = useState('')
       const list = Array.isArray(data.outfits?.outfits) ? data.outfits.outfits : []
