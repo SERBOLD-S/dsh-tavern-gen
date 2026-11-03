@@ -66,20 +66,25 @@
 
 ## 外观从哪来
 
-调 `read_character` 拿这个角色的十二块 traits。**挑这次用得上的，不要全塞。**
+调 `read_character`，它给的是分块 tag：`face` / `faceBack` 头面，`bodySFW` / `bodyNSFW` 上半身，`lowerSFW` / `lowerNSFW` 下半身，带 `Back` 的是背面版。
 
-按镜头和衣着状态挑：
+按镜头和衣着挑块，拼成前缀：
 
-| 镜头 | 穿着 | 取哪几块 |
-|---|---|---|
-| 正面 | 衣服在 | `face` + `bodySFW` + `lowerSFW` |
-| 背面 | 衣服在 | `faceBack` + `bodySFWBack` + `lowerSFWBack` |
-| 正面 | 赤裸 | `face` + `bodyNSFW` + `lowerNSFW` |
-| 背面 | 赤裸 | `faceBack` + `bodyNSFWBack` + `lowerNSFWBack` |
+| 画面 | 取哪几块 |
+|---|---|
+| 正面，衣服在 | `face` + `bodySFW` + `lowerSFW` |
+| 正面，赤裸 | `face` + `bodyNSFW` + `lowerNSFW` |
+| 背面，衣服在 | `faceBack` + `bodySFWBack` + `lowerSFWBack` |
+| 背面，赤裸 | `faceBack` + `bodyNSFWBack` + `lowerNSFWBack` |
+| 只拍下半身 | 不取 `face`，按穿衣 / 赤裸取下身块 |
+| 半脱 | 露出的部位取 NSFW 块，遮着的取 SFW 块，两头拼 |
+
+**每块整块原样复制，块内一个字都不要改**：括号层数、逗号位置、括号里的组合全部原样，只用逗号把块接起来。禁止去重、禁止合并同义 tag、禁止拆开括号里的词——权重掉了角色就变样。
+
+人物库的块是硬性字面量；`find_prompt` 查到的素材串只是参考，可以拆开挑着用。
 
 - `feature` 不进提示词——那是给模型挑表情动作用的参考
 - `negative` 不要写进 prompt，它走 `gen_image` 的 `negative` 参数
-
 ## 年龄词
 
 人物库标了年龄段的角色，年龄词必须出现在 `face` 和 `faceBack` 里。
