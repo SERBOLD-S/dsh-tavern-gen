@@ -46,9 +46,19 @@ API Key 交给宿主的凭据服务保管，明文不落盘、不出宿主。设
 - 勾上「锁定」之后，再导入不会顶掉当前默认。
 - 没有工作流时本地出图会直接报错，不会退回简易模式。
 
+**种子**：ComfyUI 网页里的「生成后控制」（`control_after_generate`）不会写进导出的 API JSON，里面只有一个固定值。插件不接管的话，同一提示词永远出同一张图，ComfyUI 还会直接返回上次的缓存。所以种子由插件按设置页的选择自己算：
+
+| 选项 | 行为 |
+|---|---|
+| `randomize`（默认） | 每张抽新种子 |
+| `fixed` | 沿用上一次出图的种子，从 randomize 切过来就是重现刚看到的那张 |
+| `increment` / `decrement` | 上一次的种子加一 / 减一 |
+
+上一次的种子按工作流文件名记在数据目录的 `seed-state.json`，不进 `config.json`。`gen_image` 对应两个参数：`seed` 指定第一张的种子（复现某张图用），`seed_control` 只对这一次调用换控制方式、不改设置。
+
 ### 尺寸与出图节奏
 
-`gen_image` 的 `size` 只有三档：竖图、横图、方图。不填时用渠道配置里存的宽高，再没有就回竖图。
+`gen_image` 的 `size` 只有三档：竖图、横图、方图。本地 ComfyUI 下不填时用工作流里识别出的宽高；工作流用连线节点给宽高（比如 `ResolutionSelector`）时插件解析不出数字，尺寸由工作流决定，返回里也这么写，不会编一个默认值。云端渠道不填时用渠道配置里存的宽高，再没有就回竖图。
 
 想要别的比例、或者想改默认尺寸，直接在对话里说，让 Agent 改渠道配置——不用翻设置页。
 
@@ -83,7 +93,7 @@ API Key 交给宿主的凭据服务保管，明文不落盘、不出宿主。设
 | `read_image_config` | 免费 | 查当前渠道、模型、画风预设、可选尺寸 |
 | `find_prompt` | 免费 | 按词查素材表，只回命中的几条 |
 
-`gen_image` 的参数：`prompt`（必填）、`negative`、`channel`、`size`、`count`、`preset`、`sampler`。`channel` 和 `preset` 是单次覆盖，不写回全局配置。
+`gen_image` 的参数：`prompt`（必填）、`negative`、`channel`、`size`、`count`、`preset`、`sampler`，以及两个只对本地 ComfyUI 生效的 `seed`、`seed_control`。`channel`、`preset`、`seed_control` 是单次覆盖，不写回全局配置。
 
 返回里每张图给三样：能直接写进回复的 Markdown 图片语法、裸链接（给人复制用）、磁盘绝对路径。路径只是备查，图出来直接贴进回复就行，不要求读图核验；只在需要看画面细节时才读那个文件。
 
@@ -126,7 +136,7 @@ dsh-tavern-gen/
 │   ├── comfy-client.js       本地 ComfyUI：探活、提交、轮询、取图
 │   ├── workflow-import.js    工作流导入与节点绑定识别
 │   ├── credential-store.js   密钥进出凭据库
-│   ├── prompt-presets.js     画师串拼接
+│   ├── prompt-presets.js     按后端适配提示词格式
 │   └── vendor/               pngjs、jpeg-js
 ├── client.js                 设置页（浏览器侧）
 ├── skills/
@@ -145,6 +155,7 @@ dsh-tavern-gen/
 - **工作流模式会整段替换负面节点**，预设里的负面词和工具 `negative` 都会被顶掉。
 - **画廊删除会连图片文件一起删**，删了找不回来。
 - 人物库、服装库、世界书都是 JSON 直存，不是并发安全的。不要在多个标签页同时编辑同一个库。
+- **种子状态跟着工作流文件名走，存在数据目录**。删了 `image-cache/dsh-tavern-gen/seed-state.json` 就从头开始；换机器、重装插件之后 `fixed` 拿不到上次那张图。
 - 模型生成质量受生图模型、提示词、种子、LoRA 影响，人物库只能约束外观描述，不保证每张图完全一致。
 
 ## 许可
